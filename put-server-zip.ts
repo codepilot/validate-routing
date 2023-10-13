@@ -4,6 +4,7 @@ import { mkdir, open, readFile, readdir, writeFile } from 'node:fs/promises';
 import { IncomingMessage, ServerResponse, createServer } from 'node:http';
 import { parse } from 'node:path';
 import { promisify } from 'node:util';
+import { randomBytes } from 'node:crypto';
 
 const async_exec = promisify(exec);
 
@@ -63,7 +64,7 @@ async function handle_request(req: IncomingMessage, res: ServerResponse<Incoming
       case '{"url":"/validate-routing-zip","method":"PUT"}':
         {
           const TIMESTAMP = JSON.stringify(new Date()).replaceAll(/:|\./g, '-');
-          const cwd = `./output/output-${JSON.parse(TIMESTAMP)}`;
+          const cwd = `./output/output-${JSON.parse(TIMESTAMP)}-${randomBytes(16).toString('hex')}`;
           await mkdir(cwd, {'recursive': true});
           const wh = await open(`${cwd}/test.zip`,'wx');
           let data_so_far = 0;
