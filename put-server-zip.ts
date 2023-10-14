@@ -1,6 +1,6 @@
 import { deepStrictEqual } from 'node:assert';
-import { exec } from 'node:child_process';
-import { mkdir, open, readFile, readdir, writeFile } from 'node:fs/promises';
+import { exec, spawn } from 'node:child_process';
+import { rmdir, mkdir, open, readFile, readdir, writeFile } from 'node:fs/promises';
 import { IncomingMessage, ServerResponse, createServer } from 'node:http';
 import { parse } from 'node:path';
 import { promisify } from 'node:util';
@@ -112,18 +112,17 @@ async function handle_request(req: IncomingMessage, res: ServerResponse<Incoming
 
           await writeFile(`${cwd}/batch.tcl`, batch_tcl);
 
-          const { stdout, stderr } = await async_exec(`C:/Xilinx/Vivado/2023.1/bin/vivado.bat -mode batch -source batch.tcl -verbose`, {cwd, windowsHide: true});
+          res.writeHead(200, {'content-type': 'text/plain', 'X-Accel-Buffering': 'no'});
+          const child_process = spawn(`C:/Xilinx/Vivado/2023.1/bin/vivado.bat`, ['-mode', 'batch', '-source', 'batch.tcl', '-verbose'], {cwd, shell: true, windowsHide: true, timeout: 1800000, stdio: ['ignore', 'pipe', 'ignore']});
+          child_process.on("close", async (code)=> {
+            res.end();
+            await rmdir(cwd, {'recursive': true, maxRetries: 10});
+          });
+          child_process.on("spawn", ()=> res.write('vivado started\r\n'))
 
-          res.writeHead(200, {'content-type': 'application/json'});
-          res.end(JSON.stringify({
-            stdout,
-            stderr,
-            phys: Array.from(phys),
-            edn: Array.from(edn),
-            tcl: Array.from(tcl),
-            dcp: Array.from(dcp),
-            batch_tcl,
-          }, null, 2));
+          child_process.stdout.on('data', (data) => {
+            res.write(data);
+          }); 
           return;
         }
       default:

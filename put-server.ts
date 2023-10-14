@@ -1,9 +1,8 @@
-import { exec } from 'node:child_process';
-import { mkdir, open } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { mkdir, open, rmdir } from 'node:fs/promises';
 import { IncomingMessage, ServerResponse, createServer } from 'node:http';
 import { promisify } from 'node:util';
-
-const async_exec = promisify(exec);
 
 async function handle_request(req: IncomingMessage, res: ServerResponse<IncomingMessage> & {req: IncomingMessage;}) {
   req.on('error', (err)=> {
@@ -22,7 +21,7 @@ async function handle_request(req: IncomingMessage, res: ServerResponse<Incoming
       case '{"url":"/validate-routing","method":"PUT"}':
         {
           const TIMESTAMP = JSON.stringify(new Date()).replaceAll(/:|\./g, '-');
-          const cwd = `./output/output-${JSON.parse(TIMESTAMP)}`;
+          const cwd = `./output/output-${JSON.parse(TIMESTAMP)}-${randomBytes(16).toString('hex')}`;
           await mkdir(cwd, {'recursive': true});
           const wh = await open(`${cwd}/test.dcp`,'wx');
           let data_so_far = 0;
@@ -53,10 +52,17 @@ async function handle_request(req: IncomingMessage, res: ServerResponse<Incoming
             return;
           }
 
-          const { stdout, stderr } = await async_exec(`C:/Xilinx/Vivado/2023.1/bin/vivado.bat -mode batch -source F:/validate-routing/source.tcl -verbose test.dcp`, {cwd, windowsHide: true});
-
-          res.writeHead(200, {'content-type': 'application/json'});
-          res.end(JSON.stringify({stdout, stderr}));
+          res.writeHead(200, {'content-type': 'text/plain', 'X-Accel-Buffering': 'no'});
+          const child_process = spawn(`C:/Xilinx/Vivado/2023.1/bin/vivado.bat`, ['-mode', 'batch', '-source', 'F:/validate-routing/source.tcl', '-verbose', 'test.dcp'], {cwd, shell: true, windowsHide: true, timeout: 1800000, stdio: ['ignore', 'pipe', 'ignore']});
+          child_process.on("close", async (code)=> {
+            res.end();
+            await rmdir(cwd, {'recursive': true, maxRetries: 10});
+          });
+          child_process.on("spawn", ()=> res.write('vivado started\r\n'))
+          child_process.stdout.on('data', (data) => {
+            res.write(data);
+            // console.log(data);
+          }); 
           return;
         }
       default:
